@@ -1,7 +1,3 @@
-from ImageOps import expand
-from Image import fromstring
-
-
 cdef extern from "qrencode.h":
     int QR_ECLEVEL_L
     int QR_ECLEVEL_M
@@ -22,6 +18,16 @@ cdef extern from "qrencode.h":
 
 
 cdef class Encoder:
+    EC_L = QR_ECLEVEL_L
+    EC_M = QR_ECLEVEL_M
+    EC_Q = QR_ECLEVEL_Q
+    EC_H = QR_ECLEVEL_H
+    
+    MODE_NUM = QR_MODE_NUM
+    MODE_AN = QR_MODE_AN
+    MODE_8 = QR_MODE_8
+    MODE_KANJI = QR_MODE_KANJI
+    
     default_options = {
         'mode' : QR_MODE_8,
         'ec_level': QR_ECLEVEL_L,
@@ -37,7 +43,56 @@ cdef class Encoder:
     def __dealloc__(self):
         pass
     
+    def encode_matrix(self, char *text, options={}):
+        '''
+        Returns (version, width, data).  Does not create an image.  `data` will
+        be a list of length (width*width), containing one item for each 
+        "module" (in QR code parlance, a module is an atomic black/white output
+        square).
+        
+        Honors options 
+            - version
+            - mode
+            - ec_level
+            - case_sensitive        
+        
+        Only the least significant bit of each integer in `data` should be 
+        considered for normal applications: 1 means black, 0 means white.
+        
+         MSB 76543210 LSB
+             |||||||`- 1=black/0=white
+             ||||||`-- data and ecc code area
+             |||||`--- format information
+             ||||`---- version information
+             |||`----- timing pattern
+             ||`------ alignment pattern
+             |`------- finder pattern and separator
+             `-------- non-data modules (format, timing, etc.)        
+        '''
+        cdef QRcode *_c_code
+        cdef unsigned char *data
+        
+        opt = self.default_options
+        opt.update(options)
+        
+        v = opt.get('version')
+        mode = opt.get('mode')
+        ec_level = opt.get('ec_level')
+        case_sensitive = opt.get('case_sensitive')
+       
+        # encode the text as a QR code
+        str_copy = text
+        str_copy = str_copy + '\0'
+        _c_code = QRcode_encodeString(str_copy, int(v), int(ec_level), int(mode), int(case_sensitive))
+        version = _c_code.version
+        width = _c_code.width
+        data = _c_code.data
+        return version, width, [ data[i] for i in range(width * width) ]
+    
     def encode(self, char *text, options={}):
+        from ImageOps import expand
+        from Image import fromstring
+        
         cdef QRcode *_c_code
         cdef unsigned char *data
         
